@@ -10,6 +10,7 @@ on:
       - "examples"
       - "**/*.md"
       - ".github/**"
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
