@@ -77,7 +77,7 @@ retry:
 	if err != nil {
 		if os.IsNotExist(err) {
 			retries++
-			if retries > 10 {
+			if retries > 15 {
 				log.Fatal("Couldn't wait for wg0.json config to be created. Timed out")
 			}
 			time.Sleep(time.Duration(1) * time.Second)
