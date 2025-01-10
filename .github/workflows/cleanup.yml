@@ -12,7 +12,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Cleanup Untagged Images (> 1 day)
-        uses: snok/container-retention-policy@v1
+        uses: snok/container-retention-policy@v3.0.0
         with:
           image-names: support-pl/wireguard-agent
           cut-off: A day ago UTC
