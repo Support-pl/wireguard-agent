@@ -17,4 +17,4 @@ jobs:
           image-names: support-pl/wireguard-agent
           cut-off: A day ago UTC
           account: Support-pl
-          token: ${{ secrets.PACKAGES_PAT }}
+          token: ${{ secrets.PAT }}
