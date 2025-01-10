@@ -14,7 +14,7 @@ jobs:
       - name: Cleanup Untagged Images (> 1 day)
         uses: snok/container-retention-policy@v1
         with:
-          image-names: support-pl/nocloud-driver-ovh
+          image-names: support-pl/wireguard-agent
           cut-off: A day ago UTC
           account-type: org
           org-name: Support-pl
