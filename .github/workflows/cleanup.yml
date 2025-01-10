@@ -15,6 +15,6 @@ jobs:
         uses: snok/container-retention-policy@v3.0.0
         with:
           image-names: support-pl/wireguard-agent
-          cut-off: A day ago UTC
+          cut-off:  5d
           account: Support-pl
           token: ${{ secrets.GITHUB_TOKEN }}
