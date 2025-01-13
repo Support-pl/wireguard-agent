@@ -42,6 +42,13 @@
       fail: msg="UNSUPPORTED_OS"
       when: ansible_system != "Linux"
 
+    - name: Update and upgrade apt packages
+      become: true
+      apt:
+        upgrade: yes
+        update_cache: yes
+        cache_valid_time: 86400 #One day
+
     - name: Install required packages
       ansible.builtin.package:
         name: "{{ item }}"
@@ -126,6 +133,9 @@
         chdir: "{{ temp_dir }}"
       register: docker_compose_result
       failed_when: docker_compose_result.rc != 0
+      retries: 5
+      delay: 10
+      until: docker_compose_result.rc == 0
 
     - name: Cleanup temporary Docker Compose file
       ansible.builtin.file:

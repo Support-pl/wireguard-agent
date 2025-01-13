@@ -1,0 +1,72 @@
+- name: Create VPN instance
+  hosts: all
+  become: true
+
+  environment:
+    NOCLOUD_BASE_URL:
+    INSTANCE_OWNER_ACCOUNT:
+    INSTANCE_TOKEN:
+    INSTANCE_UUID:
+    NOCLOUD_TOKEN:
+    VPN_PLAN:
+    VPN_SP:
+
+  vars:
+    json_payload: |
+      {
+        "auto_assign": true,
+        "sp": "{{ VPN_SP }}",
+        "account": "{{ INSTANCE_OWNER_ACCOUNT }}",
+        "instance": {
+          "title": "VPN",
+          "billing_plan": { "uuid": "{{ VPN_PLAN }}" },
+          "product": "setup_vpn",
+          "config": {
+            "auto_start": false,
+            "instance": "{{ INSTANCE_UUID }}"
+          }
+        }
+      }
+
+  tasks:
+
+    - name: Ensure APT package index is updated
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      ansible.builtin.package:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - curl
+
+    - name: Debug payload
+      debug:
+        var: json_payload
+
+    - name: Create instance
+      shell: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer {{ NOCLOUD_TOKEN }}" \
+            -d '{{ json_payload | to_json }}' \
+            {{ NOCLOUD_BASE_URL }}/nocloud.instances.InstancesService/Create
+      register: curl_result
+
+    - name: Debug body
+      debug:
+        var: curl_result.stdout
+
+    - name: Parse ID from response
+      set_fact:
+        response_id: "{{ (curl_result.stdout | from_json).id }}"
+
+    - name: Send vpn instance ID to config
+      shell: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer {{ INSTANCE_TOKEN }}" \
+            -d '{ "field": "linked_vpn_instance", "value": "{{ response_id }}" }' \
+            {{ NOCLOUD_BASE_URL }}/edge/post_config_data
+      register: curl_result2

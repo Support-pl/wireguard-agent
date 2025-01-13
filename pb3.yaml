@@ -1,0 +1,69 @@
+- name: Start VPN Instance
+  hosts: all
+  become: true
+
+  environment:
+    LINKED_VPN_INSTANCE:
+    NOCLOUD_TOKEN:
+    NOCLOUD_BASE_URL:
+    INSTANCE_UUID:
+
+  vars:
+    json_payload: |
+      {
+        "id": "{{ linked_vpn_instance }}"
+      }
+    get_payload: |
+      {
+        "uuid": "{{ INSTANCE_UUID }}"
+      }
+
+  tasks:
+
+    - name: Ensure APT package index is updated
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      ansible.builtin.package:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - curl
+
+    - name: Debug payload
+      debug:
+        var: json_payload
+
+    - name: Get vds instance
+      shell: |
+        curl -X POST \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer {{ NOCLOUD_TOKEN }}" \
+          -d '{{ get_payload | to_json }}' \
+          {{ NOCLOUD_BASE_URL }}/nocloud.instances.InstancesService/Get
+      register: get_result
+      retries: 5
+      delay: 10
+      until: "{{ (get_result.stdout | from_json).instance.config.meta.linked_vpn_instance is not none }}"
+
+    - name: Debug vds instance body
+      debug:
+        var: get_result.stdout
+
+    - name: Parse ID from response
+      set_fact:
+        linked_vpn_instance: "{{ (get_result.stdout | from_json).instance.config.meta.linked_vpn_instance }}"
+
+    - name: Start vpn instance
+      shell: |
+        curl -X POST \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer {{ NOCLOUD_TOKEN }}" \
+          -d '{{ json_payload | to_json }}' \
+          {{ NOCLOUD_BASE_URL }}/nocloud.instances.InstancesService/Start
+      register: curl_result
+
+    - name: Debug body
+      debug:
+        var: curl_result.stdout
