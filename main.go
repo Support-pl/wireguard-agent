@@ -48,6 +48,15 @@ func main() {
 	}
 
 	restartChan := make(chan struct{})
+	waitProcessChan := make(chan struct{})
+	termChan := make(chan struct{})
+	processFinishChan := make(chan struct{})
+
+	fatal := func(v ...any) {
+		termChan <- struct{}{}
+		<-processFinishChan
+		log.Fatal(v...)
+	}
 
 	go func() {
 	restart:
@@ -55,17 +64,35 @@ func main() {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
+		if err := cmd.Start(); err != nil {
+			log.Fatal("Failed to start run. Error: " + err.Error())
+		}
+
 		go func() {
-			if err := cmd.Run(); err != nil {
+			if err := cmd.Wait(); err != nil {
 				if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
-					log.Fatal("Failed to run. Error: " + err.Error())
+					log.Fatal("Run completed by itself but shouldn't had. Error: " + err.Error())
 				}
 			}
+			log.Println("Run finished due to signal restart or termination")
+			waitProcessChan <- struct{}{}
 		}()
-		<-restartChan
+		select {
+		case <-termChan:
+			log.Println("Termination called")
+			if err := cmd.Process.Kill(); err != nil {
+				log.Println("Failed to kill process. Error: " + err.Error())
+			}
+			<-waitProcessChan
+			processFinishChan <- struct{}{}
+			return
+		case <-restartChan:
+			log.Println("Restart called")
+		}
 		if err := cmd.Process.Kill(); err != nil {
 			log.Println("Failed to kill process. Error: " + err.Error())
 		}
+		<-waitProcessChan
 		time.Sleep(time.Duration(1) * time.Second)
 		goto restart
 	}()
@@ -78,22 +105,21 @@ retry:
 		if os.IsNotExist(err) {
 			retries++
 			if retries > 15 {
-				log.Fatal("Couldn't wait for wg0.json config to be created. Timed out")
+				fatal("Couldn't wait for wg0.json config to be created. Timed out")
 			}
 			time.Sleep(time.Duration(1) * time.Second)
 			goto retry
 		}
-
-		log.Fatal("Failed to open config file. Error: " + err.Error())
+		fatal("Failed to open config file. Error: " + err.Error())
 	}
 	_ = f.Close()
 	contents, err := os.ReadFile(configPath)
 	if err != nil {
-		log.Fatal("Failed to read config file. Error: " + err.Error())
+		fatal("Failed to read config file. Error: " + err.Error())
 	}
 	body := make(map[string]any)
 	if err = json.Unmarshal(contents, &body); err != nil {
-		log.Fatal("Failed to marshal config contents. Error: " + err.Error())
+		fatal("Failed to marshal config contents. Error: " + err.Error())
 	}
 	clients := make(map[string]any)
 	if content, ok := body["clients"]; ok {
@@ -105,15 +131,15 @@ retry:
 		now := time.Now()
 		private, err := exec.Command("wg", "genkey").Output()
 		if err != nil {
-			log.Fatal("Failed generate new key. Error: " + err.Error())
+			fatal("Failed generate new key. Error: " + err.Error())
 		}
 		public, err := genPubKey(string(private))
 		if err != nil {
-			log.Fatal("Failed generate public key. Error: " + err.Error())
+			fatal("Failed generate public key. Error: " + err.Error())
 		}
 		preshared, err := exec.Command("wg", "genpsk").Output()
 		if err != nil {
-			log.Fatal("Failed generate preshared key. Error: " + err.Error())
+			fatal("Failed generate preshared key. Error: " + err.Error())
 		}
 		client := wgEasyClient{
 			ID:           id,
@@ -130,10 +156,10 @@ retry:
 		body["clients"] = clients
 		newBody, err := json.Marshal(body)
 		if err != nil {
-			log.Fatal("Failed marshal new config. Error: " + err.Error())
+			fatal("Failed marshal new config. Error: " + err.Error())
 		}
 		if err = os.WriteFile(configPath, newBody, fs.ModeExclusive); err != nil {
-			log.Fatal("Failed to write new config to file. Error: " + err.Error())
+			fatal("Failed to write new config to file. Error: " + err.Error())
 		}
 		restartChan <- struct{}{}
 		goto retry
@@ -141,7 +167,7 @@ retry:
 	log.Println("At least one client found. Proceeding...")
 
 	if err = sendConfig(configPath); err != nil {
-		log.Fatal("Failed to send monitoring back for the first time. Error: " + err.Error())
+		fatal("Failed to send monitoring back for the first time. Error: " + err.Error())
 	}
 	go sendMonitoring(configPath)
 
