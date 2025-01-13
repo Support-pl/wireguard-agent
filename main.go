@@ -190,6 +190,8 @@ retry:
 	if err = sendMonitoringRequest(data); err != nil {
 		log.Println("Failed to send empty monitoring to cleanup. Error: " + err.Error())
 	}
+	termChan <- struct{}{}
+	<-processFinishChan
 }
 
 func genPubKey(private string) (string, error) {
