@@ -33,6 +33,11 @@ var (
 	stateUrl      string
 	configUrl     string
 	wgHost        string
+
+	restartChan       chan struct{}
+	waitProcessChan   chan struct{}
+	termChan          chan struct{}
+	processFinishChan chan struct{}
 )
 
 func init() {
@@ -42,21 +47,21 @@ func init() {
 	wgHost = os.Getenv("WG_HOST")
 }
 
+func fatal(v ...any) {
+	termChan <- struct{}{}
+	<-processFinishChan
+	log.Fatal(v...)
+}
+
 func main() {
 	if instanceToken == "" || stateUrl == "" || configUrl == "" {
 		log.Fatal("Cannot run without required envs. Got envs: ", instanceToken, stateUrl, configUrl)
 	}
 
-	restartChan := make(chan struct{})
-	waitProcessChan := make(chan struct{})
-	termChan := make(chan struct{})
-	processFinishChan := make(chan struct{})
-
-	fatal := func(v ...any) {
-		termChan <- struct{}{}
-		<-processFinishChan
-		log.Fatal(v...)
-	}
+	restartChan = make(chan struct{})
+	waitProcessChan = make(chan struct{})
+	termChan = make(chan struct{})
+	processFinishChan = make(chan struct{})
 
 	go func() {
 	restart:
@@ -113,58 +118,15 @@ retry:
 		fatal("Failed to open config file. Error: " + err.Error())
 	}
 	_ = f.Close()
-	contents, err := os.ReadFile(configPath)
+
+	created, err := ensureClient(configPath)
 	if err != nil {
-		fatal("Failed to read config file. Error: " + err.Error())
+		fatal(err)
 	}
-	body := make(map[string]any)
-	if err = json.Unmarshal(contents, &body); err != nil {
-		fatal("Failed to marshal config contents. Error: " + err.Error())
-	}
-	clients := make(map[string]any)
-	if content, ok := body["clients"]; ok {
-		clients = content.(map[string]any)
-	}
-	if len(clients) == 0 {
-		log.Println("No client in config. Creating default client automatically")
-		id := uuid.New().String()
-		now := time.Now()
-		private, err := exec.Command("wg", "genkey").Output()
-		if err != nil {
-			fatal("Failed generate new key. Error: " + err.Error())
-		}
-		public, err := genPubKey(string(private))
-		if err != nil {
-			fatal("Failed generate public key. Error: " + err.Error())
-		}
-		preshared, err := exec.Command("wg", "genpsk").Output()
-		if err != nil {
-			fatal("Failed generate preshared key. Error: " + err.Error())
-		}
-		client := wgEasyClient{
-			ID:           id,
-			Name:         "default",
-			Address:      "10.8.0.2",
-			Enabled:      true,
-			CreatedAt:    &now,
-			UpdatedAt:    &now,
-			PrivateKey:   strings.TrimRight(string(private), "\n"),
-			PublicKey:    strings.TrimRight(public, "\n"),
-			PreSharedKey: strings.TrimRight(string(preshared), "\n"),
-		}
-		clients[id] = client
-		body["clients"] = clients
-		newBody, err := json.Marshal(body)
-		if err != nil {
-			fatal("Failed marshal new config. Error: " + err.Error())
-		}
-		if err = os.WriteFile(configPath, newBody, fs.ModeExclusive); err != nil {
-			fatal("Failed to write new config to file. Error: " + err.Error())
-		}
+	if created {
 		restartChan <- struct{}{}
 		goto retry
 	}
-	log.Println("At least one client found. Proceeding...")
 
 	if err = sendConfig(configPath); err != nil {
 		fatal("Failed to send monitoring back for the first time. Error: " + err.Error())
@@ -220,4 +182,61 @@ func genPubKey(private string) (string, error) {
 	}
 
 	return output.String(), nil
+}
+
+func ensureClient(configPath string) (bool, error) {
+	changed := false
+
+	contents, err := os.ReadFile(configPath)
+	if err != nil {
+		return false, fmt.Errorf("failed to read config file: %w", err)
+	}
+	body := make(map[string]any)
+	if err = json.Unmarshal(contents, &body); err != nil {
+		return false, fmt.Errorf("failed to marshal config contents: %w", err)
+	}
+	clients := make(map[string]any)
+	if content, ok := body["clients"]; ok {
+		clients = content.(map[string]any)
+	}
+	if len(clients) == 0 {
+		log.Println("No client in config. Creating default client automatically")
+		id := uuid.New().String()
+		now := time.Now()
+		private, err := exec.Command("wg", "genkey").Output()
+		if err != nil {
+			return false, fmt.Errorf("failed generate new key: %w", err)
+		}
+		public, err := genPubKey(string(private))
+		if err != nil {
+			return false, fmt.Errorf("failed to generate public key: %w", err)
+		}
+		preshared, err := exec.Command("wg", "genpsk").Output()
+		if err != nil {
+			return false, fmt.Errorf("failed to generate preshared key: %w", err)
+		}
+		client := wgEasyClient{
+			ID:           id,
+			Name:         "default",
+			Address:      "10.8.0.2",
+			Enabled:      true,
+			CreatedAt:    &now,
+			UpdatedAt:    &now,
+			PrivateKey:   strings.TrimRight(string(private), "\n"),
+			PublicKey:    strings.TrimRight(public, "\n"),
+			PreSharedKey: strings.TrimRight(string(preshared), "\n"),
+		}
+		clients[id] = client
+		body["clients"] = clients
+		newBody, err := json.Marshal(body)
+		if err != nil {
+			return false, fmt.Errorf("failed to marshal new config: %w", err)
+		}
+		if err = os.WriteFile(configPath, newBody, fs.ModeExclusive); err != nil {
+			return false, fmt.Errorf("failed to write new config to file: %w", err)
+		}
+		changed = true
+	}
+	log.Println("At least one client found. Proceeding...")
+	return changed, nil
 }

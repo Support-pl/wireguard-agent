@@ -90,6 +90,14 @@ func sendConfig(path string) error {
 
 func sendMonitoring(path string) {
 	for {
+		created, err := ensureClient(path)
+		if err != nil {
+			log.Println("Error ensuring client from monitoring. Error: " + err.Error())
+			continue
+		}
+		if created {
+			restartChan <- struct{}{}
+		}
 		if err := sendConfig(path); err != nil {
 			log.Println("Error sending monitoring data:", err)
 		}
