@@ -33,6 +33,7 @@ var (
 	stateUrl      string
 	configUrl     string
 	wgHost        string
+	wgPort        string
 
 	restartChan       chan struct{}
 	waitProcessChan   chan struct{}
@@ -45,6 +46,7 @@ func init() {
 	stateUrl = os.Getenv("POST_STATE_URL")
 	configUrl = os.Getenv("POST_CONFIG_DATA_URL")
 	wgHost = os.Getenv("WG_HOST")
+	wgPort = "51820"
 }
 
 func fatal(v ...any) {

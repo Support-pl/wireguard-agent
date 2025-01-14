@@ -61,7 +61,7 @@ func getConfig(path string) (string, error) {
 		ServerPublicKey:    server["publicKey"].(string),
 		ServerPresharedKey: client["preSharedKey"].(string),
 		ServerAllowedIPs:   []string{"0.0.0.0/0"},
-		ServerEndpoint:     wgHost,
+		ServerEndpoint:     wgHost + ":" + wgPort,
 	}
 
 	return clientConfig.CreateConfig(), nil
