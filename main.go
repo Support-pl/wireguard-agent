@@ -46,7 +46,10 @@ func init() {
 	stateUrl = os.Getenv("POST_STATE_URL")
 	configUrl = os.Getenv("POST_CONFIG_DATA_URL")
 	wgHost = os.Getenv("WG_HOST")
-	wgPort = "51820"
+	wgPort = os.Getenv("WG_PORT")
+	if wgPort == "" {
+		wgPort = "51820"
+	}
 }
 
 func fatal(v ...any) {
