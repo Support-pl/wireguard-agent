@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -52,10 +53,14 @@ func getConfig(path string) (string, error) {
 		break
 	}
 
+	wgPortNum, err := strconv.Atoi(wgPort)
+	if err != nil {
+		return "", fmt.Errorf("invalid port")
+	}
 	clientConfig := WireGuardConfig{
 		ClientPrivateKey: client["privateKey"].(string),
 		ClientAddress:    client["address"].(string),
-		ClientListenPort: 51820,
+		ClientListenPort: wgPortNum,
 		ClientDNS:        "1.1.1.1",
 
 		ServerPublicKey:    server["publicKey"].(string),
