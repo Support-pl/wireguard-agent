@@ -16,4 +16,6 @@ WORKDIR /app
 
 COPY --from=builder /app/nocloud-watcher ./
 
+HEALTHCHECK none
+
 ENTRYPOINT ["./nocloud-watcher"]
